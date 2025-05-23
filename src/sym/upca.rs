@@ -44,20 +44,19 @@ pub const ENCODINGS: [[[u8; 7]; 10]; 2] = [
     ],
 ];
 
-/// Maps parity (odd/even) for the left-side digits based on the first digit in
-/// the number system portion of the barcode data.
-const PARITY: [[usize; 5]; 10] = [
-    [0, 0, 0, 0, 0],
-    [0, 1, 0, 1, 1],
-    [0, 1, 1, 0, 1],
-    [0, 1, 1, 1, 0],
-    [1, 0, 0, 1, 1],
-    [1, 1, 0, 0, 1],
-    [1, 1, 1, 0, 0],
-    [1, 0, 1, 0, 1],
-    [1, 0, 1, 1, 0],
-    [1, 1, 0, 1, 0],
-];
+// Commented out because the previous dev didn't even use it.
+// const PARITY: [[usize; 5]; 10] = [
+//     [0, 0, 0, 0, 0],
+//     [0, 1, 0, 1, 1],
+//     [0, 1, 1, 0, 1],
+//     [0, 1, 1, 1, 0],
+//     [1, 0, 0, 1, 1],
+//     [1, 1, 0, 0, 1],
+//     [1, 1, 1, 0, 0],
+//     [1, 0, 1, 0, 1],
+//     [1, 0, 1, 1, 0],
+//     [1, 1, 0, 1, 0],
+// ];
 
 /// The left-hand guard pattern.
 pub const LEFT_GUARD: [u8; 3] = [1, 0, 1];
@@ -199,7 +198,7 @@ mod tests {
 
         assert_eq!(upca.err().unwrap(), Error::Checksum)
     }
-    
+
     #[test]
     fn valid_checksum_upca() {
         let upca = UPCA::new("725272730706");
@@ -217,5 +216,4 @@ mod tests {
         assert_eq!(collapse_vec(upca2.encode()), "10101110110111101011011101111010011001001001101010111001011001101011100111001011101001011100101");
         assert_eq!(collapse_vec(upca3.encode()), "10100011010001011011000101000110010011001100101010111001010001001010000101000011001101100110101");
     }
-
 }

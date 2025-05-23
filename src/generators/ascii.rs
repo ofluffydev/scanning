@@ -8,7 +8,6 @@
 use crate::error::Result;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
-use core::iter::repeat;
 
 /// The ASCII barcode generator type.
 #[derive(Copy, Clone, Debug)]
@@ -41,7 +40,7 @@ impl ASCII {
     fn generate_row(&self, barcode: &[u8]) -> String {
         barcode
             .iter()
-            .flat_map(|&d| repeat(CHARS[d as usize]).take(self.xdim))
+            .flat_map(|&d| std::iter::repeat_n(CHARS[d as usize], self.xdim))
             .collect()
     }
 

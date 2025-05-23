@@ -67,18 +67,32 @@ struct Unit {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum UnitKind {
+    /// Represents character set A in Code128 barcodes.
     A,
+    /// Represents character set B in Code128 barcodes.
     B,
+    /// Represents character set C in Code128 barcodes.
     C,
 }
 
 type Encoding = [u8; 11];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Represents the character sets available in Code128 barcodes.
+/// Using special characters to switch between character sets is still supported.
+///
+/// - `A`: Character set A, which includes ASCII characters 00 to 95.
+/// - `B`: Character set B, which includes ASCII characters 32 to 127.
+/// - `C`: Character set C, which encodes pairs of digits (00–99).
+/// - `None`: No character set specified.
 pub enum CharacterSet {
+    /// Character set A
     A,
+    /// Character set B
     B,
+    /// Character set C
     C,
+    /// No character set specified, will error if you don't use a special character to switch.
     None,
 }
 
@@ -468,9 +482,9 @@ mod tests {
 
     #[test]
     fn code128_encode_longhand() {
-        let code128_a = Code128::new("\u{00C0}HELLO").unwrap();
-        let code128_b = Code128::new("\u{00C0}XY\u{0106}2199").unwrap();
-        let code128_c = Code128::new("\u{0181}xyZ\u{00C0}199!*1").unwrap();
+        let code128_a = Code128::new("\u{00C0}HELLO", CharacterSet::None).unwrap();
+        let code128_b = Code128::new("\u{00C0}XY\u{0106}2199", CharacterSet::None).unwrap();
+        let code128_c = Code128::new("\u{0181}xyZ\u{00C0}199!*1", CharacterSet::None).unwrap();
 
         assert_eq!(collapse_vec(code128_a.encode()), "110100001001100010100010001101000100011011101000110111010001110110110100010001100011101011");
         assert_eq!(collapse_vec(code128_b.encode()), "110100001001110001011011101101000101110111101101110010010111011110100111011001100011101011");
