@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn code128_as_svg() {
-        let code128 = Code128::new("ÀHIĆ345678").unwrap();
+        let code128 = Code128::new("HIĆ345678", CharacterSet::A).unwrap();
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
         let generated = svg.generate(&code128.encode()[..]).unwrap();
 

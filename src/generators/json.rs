@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn code_128_as_json() {
-        let code128 = Code128::new("ÀHELLO").unwrap();
+        let code128 = Code128::new("HELLO", CharacterSet::A).unwrap();
         let json = JSON::new();
         let generated = json.generate(&code128.encode()[..]).unwrap();
 
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn code_128_as_json_small_height_double_weight() {
-        let code128 = Code128::new("ÀHELLO").unwrap();
+        let code128 = Code128::new("HELLO", CharacterSet::A).unwrap();
         let json = JSON { height: 7, xdim: 2 };
         let generated = json.generate(&code128.encode()[..]).unwrap();
 

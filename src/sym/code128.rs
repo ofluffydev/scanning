@@ -75,7 +75,7 @@ enum UnitKind {
 type Encoding = [u8; 11];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CharacterSet {
+pub enum CharacterSet {
     A,
     B,
     C,
@@ -287,11 +287,23 @@ impl CharacterSet {
 impl Code128 {
     /// Creates a new barcode.
     /// Returns Result<Code128, Error> indicating parse success.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<Code128> {
+    pub fn new<T: AsRef<str>>(data: T, character_set: CharacterSet) -> Result<Code128> {
         let data = data.as_ref();
+
         if data.len() < 2 {
             return Err(Error::Length);
         }
+
+        // Append a letter depending on the character-set.
+        let starting_char = match character_set {
+            CharacterSet::A => 'À',                             // Character set A
+            CharacterSet::B => 'Ɓ',                             // Character set B
+            CharacterSet::C => 'Ć',                             // Character set C
+            CharacterSet::None => return Err(Error::Character), // No character set
+        };
+
+        // Prepend the starting character to the data.
+        let data = format!("{}{}", starting_char, data);
 
         Code128::parse(data.chars().collect()).map(Code128)
     }
@@ -401,8 +413,8 @@ mod tests {
 
     #[test]
     fn new_code128() {
-        let code128_a = Code128::new("À !! Ć0201");
-        let code128_b = Code128::new("À!!  \" ");
+        let code128_a = Code128::new(" !! Ć0201", CharacterSet::A);
+        let code128_b = Code128::new("!!  \" ", CharacterSet::A);
 
         assert!(code128_a.is_ok());
         assert!(code128_b.is_ok());
@@ -410,16 +422,16 @@ mod tests {
 
     #[test]
     fn invalid_length_code128() {
-        let code128_a = Code128::new("");
+        let code128_a = Code128::new("", CharacterSet::None);
 
         assert_eq!(code128_a.err().unwrap(), Error::Length);
     }
 
     #[test]
     fn invalid_data_code128() {
-        let code128_a = Code128::new("À☺ "); // Unknown character.
-        let code128_b = Code128::new("ÀHELLOĆ12352"); // Trailing carry at the end.
-        let code128_c = Code128::new("HELLO"); // No Character-Set specified.
+        let code128_a = Code128::new("☺ ", CharacterSet::A); // Unknown character.
+        let code128_b = Code128::new("HELLOĆ12352", CharacterSet::A); // Trailing carry at the end.
+        let code128_c = Code128::new("HELLO", CharacterSet::None); // No Character-Set specified.
 
         assert_eq!(code128_a.err().unwrap(), Error::Character);
         assert_eq!(code128_b.err().unwrap(), Error::Character);
@@ -428,9 +440,9 @@ mod tests {
 
     #[test]
     fn code128_encode() {
-        let code128_a = Code128::new("ÀHELLO").unwrap();
-        let code128_b = Code128::new("ÀXYĆ2199").unwrap();
-        let code128_c = Code128::new("ƁxyZÀ199!*1").unwrap();
+        let code128_a = Code128::new("HELLO", CharacterSet::A).unwrap();
+        let code128_b = Code128::new("XYĆ2199", CharacterSet::A).unwrap();
+        let code128_c = Code128::new("xyZÀ199!*1", CharacterSet::B).unwrap();
 
         assert_eq!(collapse_vec(code128_a.encode()), "110100001001100010100010001101000100011011101000110111010001110110110100010001100011101011");
         assert_eq!(collapse_vec(code128_b.encode()), "110100001001110001011011101101000101110111101101110010010111011110100111011001100011101011");
@@ -439,7 +451,7 @@ mod tests {
 
     #[test]
     fn code128_encode_special_chars() {
-        let code128_a = Code128::new("ÀB\u{0006}").unwrap();
+        let code128_a = Code128::new("B\u{0006}", CharacterSet::A).unwrap();
 
         assert_eq!(
             collapse_vec(code128_a.encode()),
@@ -449,7 +461,7 @@ mod tests {
 
     #[test]
     fn code128_encode_fnc_chars() {
-        let code128_a = Code128::new("ĆŹ4218402050À0").unwrap();
+        let code128_a = Code128::new("Ź4218402050À0", CharacterSet::A).unwrap();
 
         assert_eq!(collapse_vec(code128_a.encode()), "110100111001111010111010110111000110011100101100010100011001001110110001011101110101111010011101100101011110001100011101011");
     }

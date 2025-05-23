@@ -1,14 +1,16 @@
-[![Build Status](https://travis-ci.org/buntine/barcoders.svg?branch=master)](https://travis-ci.org/buntine/barcoders)
-[![Coverage Status](https://coveralls.io/repos/buntine/barcoders/badge.svg?branch=master&service=github)](https://coveralls.io/github/buntine/barcoders?branch=master)
+[![Build Status](https://travis-ci.org/ofluffydev/scanning.svg?branch=master)](https://travis-ci.org/ofluffydev/scanning)
+[![Coverage Status](https://coveralls.io/repos/ofluffydev/scanning/badge.svg?branch=master&service=github)](https://coveralls.io/github/ofluffydev/scanning?branch=master)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Crates.io](http://meritbadge.herokuapp.com/barcoders)](https://crates.io/crates/barcoders)
-[![Algorithmia](https://algorithmia.com/algorithms/anowell/barcoders/badge)](https://algorithmia.com/algorithms/anowell/barcoders)
+[![Crates.io](http://meritbadge.herokuapp.com/scanning)](https://crates.io/crates/scanning)
+[![Algorithmia](https://algorithmia.com/algorithms/anowell/scanning/badge)](https://algorithmia.com/algorithms/anowell/scanning)
 
-![BARCODERS](/media/logo.jpg?raw=true "BARCODERS")
+![SCANNING](/media/logo.jpg?raw=true "SCANNING")
 
-**Barcoders** is a barcode-encoding library for the Rust programming language.
+**Scanning** is a barcode-encoding library for the Rust programming language.
 
-Barcoders allows you to encode valid data for a chosen barcode symbology into a ```Vec<u8>``` representation of the underlying binary structure. From here, you can take advantage of one of the optional builtin generators (for exporting to SVG, GIF, PNG, etc) or build your own.
+> **Note**: This project is a fork of the original [barcoders](https://github.com/buntine/barcoders) library, which is no longer maintained.
+
+Scanning allows you to encode valid data for a chosen barcode symbology into a ```Vec<u8>``` representation of the underlying binary structure. From here, you can take advantage of one of the optional builtin generators (for exporting to SVG, GIF, PNG, etc) or build your own.
 
 ## Installation
 
@@ -16,14 +18,14 @@ For encode-only functionality (e.g if you just want to translate a `String` into
 
 ```toml
 [dependencies]
-barcoders = "2.0.0"
+scanning = "2.0.0"
 ```
 
 If you want to generate barcodes into a particular format, turn on the appropriate feature(s):
 
 ```toml
 [dependencies]
-barcoders = {version = "2.0.0", features = ["image", "ascii", "svg", "json"]}
+scanning = {version = "2.0.0", features = ["image", "ascii", "svg", "json"]}
 ```
 
 Each generator is an optional feature so you only need to compile what you want to use.
@@ -31,11 +33,11 @@ See below for the feature associated to the generation functionality you desire.
 
 ## Documentation
 
-[Documentation and examples are available here](https://docs.rs/barcoders).
+[Documentation and examples are available here](https://docs.rs/scanning).
 
 ## Current Support
 
-The ultimate goal of Barcoders is to provide encoding support for all major (and many not-so-major) symbologies.
+The ultimate goal of Scanning is to provide encoding support for all major (and many not-so-major) symbologies.
 
 ### Symbologies
 
@@ -73,9 +75,9 @@ The ultimate goal of Barcoders is to provide encoding support for all major (and
 
 ### Encoding
 ```rust
-extern crate barcoders;
+extern crate scanning;
 
-use barcoders::sym::ean13::*;
+use scanning::sym::ean13::*;
 
 // Each encoder accepts a String to be encoded. Valid data is barcode-specific
 // and thus constructors return an Result<T, barcoders::error::Error>.
@@ -88,10 +90,10 @@ let encoded: Vec<u8> = barcode.encode();
 
 ### Image (GIF, WEBP, PNG) generation
 ```rust
-extern crate barcoders;
+extern crate scanning;
 
-use barcoders::sym::code39::*;
-use barcoders::generators::image::*;
+use scanning::sym::code39::*;
+use scanning::generators::image::*;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::fs::File;
@@ -138,10 +140,10 @@ let gif = Image::GIF{height: 80,
 SVG is similar to the other image types, but I've supplied it as a separate feature as it doesn't require third-party dependencies.
 
 ```rust
-extern crate barcoders;
+extern crate scanning;
 
-use barcoders::sym::code39::*;
-use barcoders::generators::svg::*;
+use scanning::sym::code39::*;
+use scanning::generators::svg::*;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::fs::File;
@@ -171,10 +173,10 @@ let svg = SVG{height: 80,
 The ASCII generator is useful for testing purposes.
 
 ```rust
-extern crate barcoders;
+extern crate scanning;
 
-use barcoders::sym::ean13::*;
-use barcoders::generators::ascii::*;
+use scanning::sym::ean13::*;
+use scanning::generators::ascii::*;
 
 let barcode = EAN13::new("750103131130").unwrap();
 let encoded = barcode.encode();
@@ -203,10 +205,10 @@ assert_eq!(ascii.unwrap(),
 This may be useful for passing encoded data to third-party systems in a conventional format.
 
 ```rust
-extern crate barcoders;
+extern crate scanning;
 
-use barcoders::sym::codabar::*;
-use barcoders::generators::json::*;
+use scanning::sym::codabar::*;
+use scanning::generators::json::*;
 
 let codabar = Codabar::new("A98B").unwrap();
 let json = JSON::new();
