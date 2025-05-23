@@ -291,6 +291,17 @@ impl CharacterSet {
     fn lookup(self, s: &str) -> Result<Unit> {
         let p = self.index()?;
 
+        // Handle FNC characters explicitly
+        if let Some(unit) = match s {
+            "Ź" => Some(Unit { kind: UnitKind::A, index: 96 }), // FNC1
+            "ź" => Some(Unit { kind: UnitKind::A, index: 97 }), // FNC2
+            "Ż" => Some(Unit { kind: UnitKind::A, index: 98 }), // FNC3
+            "ż" => Some(Unit { kind: UnitKind::A, index: 99 }), // FNC4
+            _ => None,
+        } {
+            return Ok(unit);
+        }
+
         CHARS
             .iter()
             .position(|&c| c.0[p] == s)
@@ -338,14 +349,15 @@ impl Code128 {
 
         for ch in chars {
             match ch {
-                'À' | 'Ɓ' | 'Ć' if units.is_empty() => {
+                // Handle longhand Unicode sequences for character set switches
+                '\u{00C0}' | '\u{0181}' | '\u{0106}' if units.is_empty() => {
                     char_set = CharacterSet::from_char(ch)?;
 
                     let c = format!("START-{ch}");
                     let u = char_set.lookup(&c)?;
                     units.push(u);
                 }
-                'À' | 'Ɓ' | 'Ć' => {
+                '\u{00C0}' | '\u{0181}' | '\u{0106}' => {
                     if char_set == CharacterSet::C && carry.is_some() {
                         return Err(Error::Character);
                     }
@@ -363,6 +375,20 @@ impl Code128 {
                         carry = None;
                     }
                 },
+                // Handle FNC characters explicitly
+                'Ź' | 'ź' | 'Ż' | 'ż' => {
+                    let u = Unit {
+                        kind: UnitKind::A, // FNC characters are always in character set A
+                        index: match ch {
+                            'Ź' => 96, // FNC1
+                            'ź' => 97, // FNC2
+                            'Ż' => 98, // FNC3
+                            'ż' => 99, // FNC4
+                            _ => unreachable!(),
+                        },
+                    };
+                    units.push(u);
+                }
                 _ => {
                     let u = char_set.lookup(&ch.to_string())?;
                     units.push(u);
