@@ -57,7 +57,6 @@
 #![warn(clippy::unwrap_used)]
 // This lint happens regardless and is out of our control.
 #![allow(clippy::multiple_crate_versions)]
-
 #![warn(
     missing_docs,
     missing_debug_implementations,

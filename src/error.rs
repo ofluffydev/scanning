@@ -15,6 +15,8 @@ pub enum Error {
     Generate,
     /// Invalid checksum.
     Checksum,
+    /// Invalid data.
+    Conversion,
 }
 
 /// Alias-type for Result<T, `barcoders::error::Error`>.
@@ -25,8 +27,9 @@ impl fmt::Display for Error {
         match self {
             Self::Character => write!(f, "Barcode data is invalid"),
             Self::Length => write!(f, "Barcode data length is invalid"),
-            Error::Generate => write!(f, "Could not generate barcode data"),
-            Error::Checksum => write!(f, "Invalid checksum"),
+            Self::Generate => write!(f, "Could not generate barcode data"),
+            Self::Checksum => write!(f, "Invalid checksum"),
+            Self::Conversion => write!(f, "Invalid data conversion"),
         }
     }
 }

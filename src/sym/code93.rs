@@ -75,26 +75,42 @@ pub struct Code93(Vec<char>);
 
 impl Code93 {
     /// Creates a new barcode.
-    /// Returns Result<Code93, Error> indicating parse success.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<Code93> {
-        Code93::parse(data.as_ref()).map(|d| Code93(d.chars().collect()))
+    ///
+    /// # Returns
+    /// Returns `Result<Code93, Error>` indicating parse success.
+    ///
+    /// # Errors
+    /// Returns an `Error::Length` if the input data length is invalid.
+    /// Returns an `Error::Character` if the input data contains invalid characters.
+    ///
+    /// # Panics
+    /// Panics if the input data cannot be parsed due to an unexpected error.
+    pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
+        Ok(Self::parse(data.as_ref())
+            .map(|d| Self(d.chars().collect()))
+            .expect("Failed to parse input data"))
     }
 
-    fn char_encoding(&self, c: char) -> [u8; 9] {
+    pub(crate) fn char_encoding(c: char) -> [u8; 9] {
         match CHARS.iter().find(|&ch| ch.0 == c) {
             Some(&(_, enc)) => enc,
-            None => panic!("Unknown char: {}", c),
+            None => panic!("Unknown char: {c}"),
         }
     }
 
     /// Calculates a checksum character using a weighted modulo-47 algorithm.
-    fn checksum_char(&self, data: &[char], weight_threshold: usize) -> Option<char> {
-        let get_char_pos = |&c| CHARS.iter().position(|t| t.0 == c).unwrap();
+    pub(crate) fn checksum_char(data: &[char], weight_threshold: usize) -> Option<char> {
+        let get_char_pos = |&c| {
+            CHARS
+                .iter()
+                .position(|t| t.0 == c)
+                .expect("Character not found in CHARS mapping")
+        };
         let weight = |i| match (data.len() - i) % weight_threshold {
             0 => weight_threshold,
             n => n,
         };
-        let positions = data.iter().map(&get_char_pos);
+        let positions = data.iter().map(get_char_pos);
         let index = positions
             .enumerate()
             .fold(0, |acc, (i, pos)| acc + (weight(i) * pos));
@@ -103,42 +119,42 @@ impl Code93 {
     }
 
     /// Calculates the C checksum character using a weighted modulo-47 algorithm.
-    fn c_checksum_char(&self) -> Option<char> {
-        self.checksum_char(&self.0, 20)
+    pub(crate) fn c_checksum_char(data: &[char]) -> Option<char> {
+        Self::checksum_char(data, 20)
     }
 
     /// Calculates the K checksum character using a weighted modulo-47 algorithm.
-    fn k_checksum_char(&self, c_checksum: char) -> Option<char> {
-        let mut data: Vec<char> = self.0.clone();
-        data.push(c_checksum);
+    pub(crate) fn k_checksum_char(data: &[char], c_checksum: char) -> Option<char> {
+        let mut extended_data: Vec<char> = data.to_vec();
+        extended_data.push(c_checksum);
 
-        self.checksum_char(&data, 15)
+        Self::checksum_char(&extended_data, 15)
     }
 
-    fn push_encoding(&self, into: &mut Vec<u8>, from: [u8; 9]) {
-        into.extend(from.iter().cloned());
+    fn push_encoding(into: &mut Vec<u8>, from: [u8; 9]) {
+        into.extend(from.iter().copied());
     }
 
     fn payload(&self) -> Vec<u8> {
         let mut enc = vec![];
-        let c_checksum = self.c_checksum_char().expect("Cannot compute checksum C");
-        let k_checksum = self
-            .k_checksum_char(c_checksum)
-            .expect("Cannot compute checksum K");
+        let c_checksum = Self::c_checksum_char(&self.0).expect("Cannot compute checksum C");
+        let k_checksum =
+            Self::k_checksum_char(&self.0, c_checksum).expect("Cannot compute checksum K");
 
         for &c in &self.0 {
-            self.push_encoding(&mut enc, self.char_encoding(c));
+            Self::push_encoding(&mut enc, Self::char_encoding(c));
         }
 
         // Checksums.
-        self.push_encoding(&mut enc, self.char_encoding(c_checksum));
-        self.push_encoding(&mut enc, self.char_encoding(k_checksum));
+        Self::push_encoding(&mut enc, Self::char_encoding(c_checksum));
+        Self::push_encoding(&mut enc, Self::char_encoding(k_checksum));
 
         enc
     }
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of encoded binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let guard = &GUARD[..];
         let terminator = &TERMINATOR[..];
@@ -156,7 +172,7 @@ impl Parse for Code93 {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        let (chars, _): (Vec<_>, Vec<_>) = CHARS.iter().cloned().unzip();
+        let (chars, _): (Vec<_>, Vec<_>) = CHARS.iter().copied().unzip();
         chars
     }
 }
@@ -169,42 +185,50 @@ mod tests {
     use alloc::string::String;
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
     #[test]
     fn invalid_length_code93() {
-        let code93 = Code93::new("");
+        let code93 = Code93::new("").expect_err("Expected an error for empty input");
 
-        assert_eq!(code93.err().unwrap(), Error::Length);
+        assert_eq!(code93, Error::Length);
     }
 
     #[test]
     fn invalid_data_code93() {
-        let code93 = Code93::new("lowerCASE");
+        let code93 =
+            Code93::new("lowerCASE").expect_err("Expected an error for invalid characters");
 
-        assert_eq!(code93.err().unwrap(), Error::Character);
+        assert_eq!(
+            code93,
+            Error::Character,
+            "Expected Error::Character, but got {code93:?}"
+        );
     }
 
     #[test]
     fn code93_encode() {
         // Tests for data longer than 15, data longer than 20
-        let code931 = Code93::new("TEST93").unwrap();
-        let code932 = Code93::new("FLAM").unwrap();
-        let code933 = Code93::new("99").unwrap();
-        let code934 = Code93::new("1111111111111111111111").unwrap();
+        let code931 = Code93::new("TEST93").expect("Failed to create Code93 for 'TEST93'");
+        let code932 = Code93::new("FLAM").expect("Failed to create Code93 for 'FLAM'");
+        let code933 = Code93::new("99").expect("Failed to create Code93 for '99'");
+        let code934 =
+            Code93::new("1111111111111111111111").expect("Failed to create Code93 for long input");
 
-        assert_eq!(collapse_vec(code931.encode()), "1010111101101001101100100101101011001101001101000010101010000101011101101001000101010111101");
+        assert_eq!(collapse_vec(&code931.encode()), "1010111101101001101100100101101011001101001101000010101010000101011101101001000101010111101");
         assert_eq!(
-            collapse_vec(code932.encode()),
+            collapse_vec(&code932.encode()),
             "1010111101100010101010110001101010001010011001001011001010011001010111101"
         );
         assert_eq!(
-            collapse_vec(code933.encode()),
+            collapse_vec(&code933.encode()),
             "1010111101000010101000010101101100101000101101010111101"
         );
-        assert_eq!(collapse_vec(code934.encode()), "1010111101010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001000101101110010101010111101");
+        assert_eq!(collapse_vec(&code934.encode()), "1010111101010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001010010001000101101110010101010111101");
     }
 }

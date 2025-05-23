@@ -30,8 +30,9 @@ impl Default for ASCII {
 
 impl ASCII {
     /// Returns a new ASCII with default values.
-    pub fn new() -> ASCII {
-        ASCII {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
             height: 10,
             xdim: 1,
         }
@@ -44,7 +45,13 @@ impl ASCII {
             .collect()
     }
 
-    /// Generates the given barcode. Returns a `Result<String, Error>` indicating success.
+    /// Generates the given barcode.
+    ///
+    /// Returns a `Result<String, Error>` indicating success.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the barcode data is invalid or cannot be processed.
     pub fn generate<T: AsRef<[u8]>>(&self, barcode: T) -> Result<String> {
         let mut output = String::new();
         let row = self.generate_row(barcode.as_ref());
@@ -76,9 +83,11 @@ mod tests {
 
     #[test]
     fn ean_13_as_ascii() {
-        let ean13 = EAN13::new("750103131130").unwrap();
+        let ean13 = EAN13::new("750103131130").expect("Failed to create EAN13 barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&ean13.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&ean13.encode()[..])
+            .expect("Failed to generate ASCII representation for EAN13 barcode");
 
         assert_eq!(
             generated,
@@ -100,9 +109,11 @@ mod tests {
 
     #[test]
     fn ean_13_as_ascii_small_height_double_width() {
-        let ean13 = EAN13::new("750103131130").unwrap();
+        let ean13 = EAN13::new("750103131130").expect("Failed to create EAN13 barcode");
         let ascii = ASCII { height: 6, xdim: 2 };
-        let generated = ascii.generate(&ean13.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&ean13.encode()[..])
+            .expect("Failed to generate ASCII representation for EAN13 barcode");
 
         assert_eq!(generated,
 "
@@ -117,9 +128,11 @@ mod tests {
 
     #[test]
     fn ean_8_as_ascii() {
-        let ean8 = EAN8::new("1234567").unwrap();
+        let ean8 = EAN8::new("1234567").expect("Failed to create EAN8 barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&ean8.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&ean8.encode()[..])
+            .expect("Failed to generate ASCII representation for EAN8 barcode");
 
         assert_eq!(
             generated,
@@ -141,9 +154,11 @@ mod tests {
 
     #[test]
     fn ean_8_as_ascii_small_height_double_width() {
-        let ean8 = EAN8::new("1234567").unwrap();
+        let ean8 = EAN8::new("1234567").expect("Failed to create EAN8 barcode");
         let ascii = ASCII { height: 5, xdim: 2 };
-        let generated = ascii.generate(&ean8.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&ean8.encode()[..])
+            .expect("Failed to generate ASCII representation for EAN8 barcode");
 
         assert_eq!(generated,
 "
@@ -157,9 +172,11 @@ mod tests {
 
     #[test]
     fn code_39_as_ascii() {
-        let code39 = Code39::new("TEST8052").unwrap();
+        let code39 = Code39::new("TEST8052").expect("Failed to create Code39 barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&code39.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code39.encode()[..])
+            .expect("Failed to generate ASCII representation for Code39 barcode");
 
         assert_eq!(generated,
 "
@@ -178,9 +195,11 @@ mod tests {
 
     #[test]
     fn code_39_as_ascii_small_height_double_weight() {
-        let code39 = Code39::new("1234").unwrap();
+        let code39 = Code39::new("1234").expect("Failed to create Code39 barcode");
         let ascii = ASCII { height: 7, xdim: 2 };
-        let generated = ascii.generate(&code39.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code39.encode()[..])
+            .expect("Failed to generate ASCII representation for Code39 barcode");
 
         assert_eq!(generated,
 "
@@ -196,9 +215,11 @@ mod tests {
 
     #[test]
     fn codabar_as_ascii() {
-        let codabar = Codabar::new("A98B").unwrap();
+        let codabar = Codabar::new("A98B").expect("Failed to create Codabar barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&codabar.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&codabar.encode()[..])
+            .expect("Failed to generate ASCII representation for Codabar barcode");
 
         assert_eq!(
             generated,
@@ -220,9 +241,11 @@ mod tests {
 
     #[test]
     fn codabar_as_ascii_small_height_double_weight() {
-        let codabar = Codabar::new("A40156B").unwrap();
+        let codabar = Codabar::new("A40156B").expect("Failed to create Codabar barcode");
         let ascii = ASCII { height: 7, xdim: 2 };
-        let generated = ascii.generate(&codabar.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&codabar.encode()[..])
+            .expect("Failed to generate ASCII representation for Codabar barcode");
 
         assert_eq!(generated,
 "
@@ -238,9 +261,12 @@ mod tests {
 
     #[test]
     fn code_128_as_ascii() {
-        let code128 = Code128::new("HELLO", CharacterSet::A).unwrap();
+        let code128 =
+            Code128::new("HELLO", CharacterSet::A).expect("Failed to create Code128 barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&code128.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code128.encode()[..])
+            .expect("Failed to generate ASCII representation for Code128 barcode");
 
         assert_eq!(
             generated,
@@ -262,9 +288,12 @@ mod tests {
 
     #[test]
     fn code_128_as_ascii_small_height_double_weight() {
-        let code128 = Code128::new("HELLO", CharacterSet::A).unwrap();
+        let code128 = Code128::new("HELLO", CharacterSet::A)
+            .expect("Failed to create Code128 barcode with CharacterSet::A");
         let ascii = ASCII { height: 7, xdim: 2 };
-        let generated = ascii.generate(&code128.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code128.encode()[..])
+            .expect("Failed to generate ASCII representation for Code128 barcode");
 
         assert_eq!(generated,
 "
@@ -280,9 +309,11 @@ mod tests {
 
     #[test]
     fn ean2_as_ascii() {
-        let ean2 = EANSUPP::new("34").unwrap();
+        let ean2 = EANSUPP::new("34").expect("Failed to create EAN2 barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&ean2.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&ean2.encode()[..])
+            .expect("Failed to generate ASCII representation for EAN2 barcode");
 
         assert_eq!(
             generated,
@@ -304,9 +335,11 @@ mod tests {
 
     #[test]
     fn ean5_as_ascii() {
-        let ean5 = EANSUPP::new("50799").unwrap();
+        let ean5 = EANSUPP::new("50799").expect("Failed to create EAN5 barcode");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&ean5.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&ean5.encode()[..])
+            .expect("Failed to generate ASCII representation for EAN5 barcode");
 
         assert_eq!(
             generated,
@@ -328,9 +361,12 @@ mod tests {
 
     #[test]
     fn itf_as_ascii() {
-        let itf = TF::interleaved("12345").unwrap();
+        let itf = TF::interleaved("12345")
+            .expect("Failed to create interleaved TF barcode with input '12345'");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&itf.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&itf.encode()[..])
+            .expect("Failed to generate ASCII representation for interleaved TF barcode");
 
         assert_eq!(
             generated,
@@ -352,9 +388,12 @@ mod tests {
 
     #[test]
     fn code_93_as_ascii() {
-        let code93 = Code93::new("TEST93").unwrap();
+        let code93 =
+            Code93::new("TEST93").expect("Failed to create Code93 barcode with input 'TEST93'");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&code93.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code93.encode()[..])
+            .expect("Failed to generate ASCII representation for Code93 barcode");
 
         assert_eq!(
             generated,
@@ -376,9 +415,12 @@ mod tests {
 
     #[test]
     fn code_93_as_ascii_small_height_double_weight() {
-        let code93 = Code93::new("TEST93").unwrap();
+        let code93 =
+            Code93::new("TEST93").expect("Failed to create Code93 barcode with input 'TEST93'");
         let ascii = ASCII { height: 7, xdim: 2 };
-        let generated = ascii.generate(&code93.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code93.encode()[..])
+            .expect("Failed to generate ASCII representation for Code93 barcode");
 
         assert_eq!(generated,
 "
@@ -394,9 +436,12 @@ mod tests {
 
     #[test]
     fn code_11_as_ascii() {
-        let code11 = Code11::new("12-9").unwrap();
+        let code11 =
+            Code11::new("12-9").expect("Failed to create Code11 barcode with input '12-9'");
         let ascii = ASCII::new();
-        let generated = ascii.generate(&code11.encode()[..]).unwrap();
+        let generated = ascii
+            .generate(&code11.encode()[..])
+            .expect("Failed to generate ASCII representation for Code11 barcode");
 
         assert_eq!(
             generated,

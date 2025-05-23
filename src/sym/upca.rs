@@ -71,15 +71,29 @@ pub struct UPCA(Vec<u8>);
 
 impl UPCA {
     /// Creates a new barcode.
-    /// Returns Result<UPCA, Error> indicating parse success.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<UPCA> {
-        let d = UPCA::parse(data.as_ref())?;
+    ///
+    /// # Errors
+    /// This function returns an `Error::Checksum` if the provided checksum digit is invalid.
+    /// It also returns an `Error::Character` if the input contains invalid characters,
+    /// or an `Error::Length` if the input length is not valid.
+    ///
+    /// # Panics
+    /// This function will panic if the input contains a character that cannot be converted
+    /// to a digit using `to_digit(10)`.
+    ///
+    /// Returns `Result<UPCA, Error>` indicating parse success.
+    pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
+        let d = Self::parse(data.as_ref())?;
+        #[allow(clippy::cast_possible_truncation)] // Safe: to_digit(10) returns values in 0..=9
         let digits: Vec<u8> = d
             .chars()
-            .map(|c| c.to_digit(10).expect("Unknown character") as u8)
+            .map(|c| {
+                c.to_digit(10)
+                    .expect("Failed to convert character to digit") as u8
+            })
             .collect();
 
-        let upca = UPCA(digits[0..11].to_vec());
+        let upca = Self(digits[0..11].to_vec());
 
         // If checksum digit is provided, check the checksum.
         if digits.len() == 12 && upca.checksum_digit() != digits[11] {
@@ -95,10 +109,10 @@ impl UPCA {
     }
 
     fn checksum_encoding(&self) -> [u8; 7] {
-        self.char_encoding(1, self.checksum_digit())
+        Self::char_encoding(1, self.checksum_digit())
     }
 
-    fn char_encoding(&self, side: usize, d: u8) -> [u8; 7] {
+    pub(crate) const fn char_encoding(side: usize, d: u8) -> [u8; 7] {
         ENCODINGS[side][d as usize]
     }
 
@@ -114,7 +128,7 @@ impl UPCA {
         let slices: Vec<[u8; 7]> = self
             .left_digits()
             .iter()
-            .map(|d| self.char_encoding(0, *d))
+            .map(|d| Self::char_encoding(0, *d))
             .collect();
 
         helpers::join_iters(slices.iter())
@@ -124,7 +138,7 @@ impl UPCA {
         let slices: Vec<[u8; 7]> = self
             .right_digits()
             .iter()
-            .map(|d| self.char_encoding(1, *d))
+            .map(|d| Self::char_encoding(1, *d))
             .collect();
 
         helpers::join_iters(slices.iter())
@@ -132,6 +146,7 @@ impl UPCA {
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         helpers::join_slices(
             &[
@@ -154,7 +169,9 @@ impl Parse for UPCA {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        (0..10).map(|i| char::from_digit(i, 10).unwrap()).collect()
+        (0..10)
+            .map(|i| char::from_digit(i, 10).expect("Failed to convert digit to character"))
+            .collect()
     }
 }
 
@@ -166,8 +183,10 @@ mod tests {
     use alloc::string::String;
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
@@ -182,21 +201,21 @@ mod tests {
     fn invalid_data_upca() {
         let upca = UPCA::new("012345612a45");
 
-        assert_eq!(upca.err().unwrap(), Error::Character)
+        assert_eq!(upca.expect_err("Expected an error"), Error::Character);
     }
 
     #[test]
     fn invalid_len_upca() {
         let upca = UPCA::new("1234561234589");
 
-        assert_eq!(upca.err().unwrap(), Error::Length)
+        assert_eq!(upca.expect_err("Expected an error"), Error::Length);
     }
 
     #[test]
     fn invalid_checksum_upca() {
         let upca = UPCA::new("725272730705");
 
-        assert_eq!(upca.err().unwrap(), Error::Checksum)
+        assert_eq!(upca.expect_err("Expected an error"), Error::Checksum);
     }
 
     #[test]
@@ -208,12 +227,12 @@ mod tests {
 
     #[test]
     fn upce_encode() {
-        let upca1 = UPCA::new("72527273070").unwrap();
-        let upca2 = UPCA::new("738312014094").unwrap();
-        let upca3 = UPCA::new("095421076611").unwrap();
+        let upca1 = UPCA::new("72527273070").expect("Failed to create UPCA instance");
+        let upca2 = UPCA::new("738312014094").expect("Failed to create UPCA instance");
+        let upca3 = UPCA::new("095421076611").expect("Failed to create UPCA instance");
 
-        assert_eq!(collapse_vec(upca1.encode()), "10101110110010011011000100100110111011001001101010100010010000101110010100010011100101010000101");
-        assert_eq!(collapse_vec(upca2.encode()), "10101110110111101011011101111010011001001001101010111001011001101011100111001011101001011100101");
-        assert_eq!(collapse_vec(upca3.encode()), "10100011010001011011000101000110010011001100101010111001010001001010000101000011001101100110101");
+        assert_eq!(collapse_vec(&upca1.encode()), "10101110110010011011000100100110111011001001101010100010010000101110010100010011100101010000101");
+        assert_eq!(collapse_vec(&upca2.encode()), "10101110110111101011011101111010011001001001101010111001011001101011100111001011101001011100101");
+        assert_eq!(collapse_vec(&upca3.encode()), "10100011010001011011000101000110010011001100101010111001010001001010000101000011001101100110101");
     }
 }
