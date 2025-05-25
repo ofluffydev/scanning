@@ -6,7 +6,7 @@
 //! For example:
 //!
 //! ```rust
-//! use barcoders::generators::svg::*;
+//! use scanning::generators::svg::*;
 //!
 //! // Specify your own struct fields.
 //! let svg = SVG{height: 80,

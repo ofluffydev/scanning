@@ -82,13 +82,8 @@ impl Code93 {
     /// # Errors
     /// Returns an `Error::Length` if the input data length is invalid.
     /// Returns an `Error::Character` if the input data contains invalid characters.
-    ///
-    /// # Panics
-    /// Panics if the input data cannot be parsed due to an unexpected error.
     pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
-        Ok(Self::parse(data.as_ref())
-            .map(|d| Self(d.chars().collect()))
-            .expect("Failed to parse input data"))
+        Self::parse(data.as_ref()).map(|d| Self(d.chars().collect()))
     }
 
     pub(crate) fn char_encoding(c: char) -> [u8; 9] {
@@ -194,21 +189,22 @@ mod tests {
 
     #[test]
     fn invalid_length_code93() {
-        let code93 = Code93::new("").expect_err("Expected an error for empty input");
+        let code93 = Code93::new("");
 
-        assert_eq!(code93, Error::Length);
+        assert!(code93.is_err());
+        if let Err(error) = code93 {
+            assert_eq!(error, Error::Length);
+        }
     }
 
     #[test]
     fn invalid_data_code93() {
-        let code93 =
-            Code93::new("lowerCASE").expect_err("Expected an error for invalid characters");
+        let code93 = Code93::new("lowerCASE");
 
-        assert_eq!(
-            code93,
-            Error::Character,
-            "Expected Error::Character, but got {code93:?}"
-        );
+        assert!(code93.is_err());
+        if let Err(error) = code93 {
+            assert_eq!(error, Error::Character);
+        }
     }
 
     #[test]

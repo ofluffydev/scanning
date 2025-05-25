@@ -5,7 +5,7 @@
 //! For example:
 //!
 //! ```rust
-//! use barcoders::sym::ean13::*;
+//! use scanning::sym::ean13::*;
 //!
 //! let barcode = EAN13::new("750103131130").unwrap();
 //! let encoded = barcode.encode();

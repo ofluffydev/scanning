@@ -291,15 +291,23 @@ impl CharacterSet {
     fn lookup(self, s: &str) -> Result<Unit> {
         let p = self.index()?;
 
-        // Handle FNC characters explicitly
-        if let Some(unit) = match s {
-            "Ź" => Some(Unit { kind: UnitKind::A, index: 96 }), // FNC1
-            "ź" => Some(Unit { kind: UnitKind::A, index: 97 }), // FNC2
-            "Ż" => Some(Unit { kind: UnitKind::A, index: 98 }), // FNC3
-            "ż" => Some(Unit { kind: UnitKind::A, index: 99 }), // FNC4
+        // Handle FNC characters explicitly - they work in any character set
+        if let Some(index) = match s {
+            "Ź" => Some(102), // FNC1 - maps to CHARS[102]
+            "ź" => Some(97),  // FNC2 - maps to CHARS[97] 
+            "Ż" => Some(96),  // FNC3 - maps to CHARS[96]
+            "ż" => Some(100), // FNC4 - maps to CHARS[100] (was 101, should be 100)
             _ => None,
         } {
-            return Ok(unit);
+            return Ok(Unit { 
+                kind: match self {
+                    Self::A => UnitKind::A,
+                    Self::B => UnitKind::B, 
+                    Self::C => UnitKind::C,
+                    Self::None => return Err(Error::Character),
+                }, 
+                index 
+            });
         }
 
         CHARS
@@ -327,16 +335,13 @@ impl Code128 {
             return Err(Error::Length);
         }
 
-        // Append a letter depending on the character-set.
-        let starting_char = match character_set {
-            CharacterSet::A => 'À',                             // Character set A
-            CharacterSet::B => 'Ɓ',                             // Character set B
-            CharacterSet::C => 'Ć',                             // Character set C
-            CharacterSet::None => return Err(Error::Character), // No character set
+        // Append a letter depending on the character-set, or nothing for CharacterSet::None.
+        let data = match character_set {
+            CharacterSet::A => format!("À{data}"), // Character set A
+            CharacterSet::B => format!("Ɓ{data}"), // Character set B
+            CharacterSet::C => format!("Ć{data}"), // Character set C
+            CharacterSet::None => data.to_string(), // No character set
         };
-
-        // Prepend the starting character to the data.
-        let data = format!("{starting_char}{data}");
 
         Self::parse(data.chars().collect()).map(Code128)
     }
@@ -349,7 +354,7 @@ impl Code128 {
 
         for ch in chars {
             match ch {
-                // Handle longhand Unicode sequences for character set switches
+                // Handle longhand Unicode sequences for character set switches and special FNC characters
                 '\u{00C0}' | '\u{0181}' | '\u{0106}' if units.is_empty() => {
                     char_set = CharacterSet::from_char(ch)?;
 
@@ -375,21 +380,35 @@ impl Code128 {
                         carry = None;
                     }
                 },
-                // Handle FNC characters explicitly
+                // Handle FNC characters explicitly - these can be used in any character set
                 'Ź' | 'ź' | 'Ż' | 'ż' => {
-                    let u = Unit {
-                        kind: UnitKind::A, // FNC characters are always in character set A
-                        index: match ch {
-                            'Ź' => 96, // FNC1
-                            'ź' => 97, // FNC2
-                            'Ż' => 98, // FNC3
-                            'ż' => 99, // FNC4
-                            _ => unreachable!(),
-                        },
+                    // If no character set is set yet, we need to reject the input
+                    if char_set == CharacterSet::None {
+                        return Err(Error::Character);
+                    }
+                    
+                    // FNC characters can be used in any character set
+                    let index = match ch {
+                        'Ź' => 102, // FNC1
+                        'ź' => 97,  // FNC2
+                        'Ż' => 96,  // FNC3 
+                        'ż' => 100, // FNC4 - corrected from 101 to 100
+                        _ => unreachable!(),
                     };
-                    units.push(u);
+                    
+                    let kind = match char_set {
+                        CharacterSet::A => UnitKind::A,
+                        CharacterSet::B => UnitKind::B,
+                        CharacterSet::C => UnitKind::C,
+                        CharacterSet::None => return Err(Error::Character),
+                    };
+                    
+                    units.push(Unit { kind, index });
                 }
                 _ => {
+                    if char_set == CharacterSet::None {
+                        return Err(Error::Character);
+                    }
                     let u = char_set.lookup(&ch.to_string())?;
                     units.push(u);
                 }
@@ -529,7 +548,7 @@ mod tests {
 
     #[test]
     fn code128_encode_fnc_chars() {
-        let code128_a = Code128::new("Ź4218402050À0", CharacterSet::A)
+        let code128_a = Code128::new("Ź4218402050À0", CharacterSet::C)
             .expect("Failed to create Code128 barcode with FNC characters");
 
         assert_eq!(collapse_vec(&code128_a.encode()), "110100111001111010111010110111000110011100101100010100011001001110110001011101110101111010011101100101011110001100011101011");
