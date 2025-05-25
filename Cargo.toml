@@ -1,8 +1,8 @@
 [package]
 name = "scanning"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
-authors = ["Andrew Buntine <info@bunts.io>"]
+authors = ["Andrew Buntine <info@bunts.io>", "Kaden Frisk <contact@kadenfrisk.com"]
 description = "A barcode-encoding library"
 homepage = "https://github.com/ofluffydev/scanning"
 repository = "https://github.com/ofluffydev/scanning"
