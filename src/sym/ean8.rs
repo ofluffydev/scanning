@@ -16,15 +16,26 @@ pub struct EAN8(Vec<u8>);
 
 impl EAN8 {
     /// Creates a new barcode.
-    /// Returns Result<EAN8, Error> indicating parse success.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<EAN8> {
-        let d = EAN8::parse(data.as_ref())?;
+    ///
+    /// # Errors
+    /// Returns an `Error::Checksum` if the provided checksum digit is invalid.
+    /// Returns an `Error::Character` if the input contains invalid characters.
+    /// Returns an `Error::Length` if the input length is not valid.
+    ///
+    /// # Panics
+    /// Panics if a character in the input cannot be converted to a digit.
+    pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
+        let d = Self::parse(data.as_ref())?;
+        #[allow(clippy::cast_possible_truncation)] // Safe: to_digit(10) returns values in 0..=9
         let digits: Vec<u8> = d
             .chars()
-            .map(|c| c.to_digit(10).expect("Unknown character") as u8)
+            .map(|c| {
+                c.to_digit(10)
+                    .expect("Failed to convert character to digit") as u8
+            })
             .collect();
 
-        let ean8 = EAN8(digits[0..7].to_vec());
+        let ean8 = Self(digits[0..7].to_vec());
 
         // If checksum digit is provided, check the checksum.
         if digits.len() == 8 && ean8.checksum_digit() != digits[7] {
@@ -47,17 +58,17 @@ impl EAN8 {
         let mut ns = vec![];
 
         for d in self.number_system_digits() {
-            ns.extend(self.char_encoding(0, *d).iter().cloned());
+            ns.extend(Self::char_encoding(0, *d).iter().copied());
         }
 
         ns
     }
 
     fn checksum_encoding(&self) -> [u8; 7] {
-        self.char_encoding(2, self.checksum_digit())
+        Self::char_encoding(2, self.checksum_digit())
     }
 
-    fn char_encoding(&self, side: usize, d: u8) -> [u8; 7] {
+    pub(crate) const fn char_encoding(side: usize, d: u8) -> [u8; 7] {
         ENCODINGS[side][d as usize]
     }
 
@@ -73,7 +84,7 @@ impl EAN8 {
         let slices: Vec<[u8; 7]> = self
             .left_digits()
             .iter()
-            .map(|d| self.char_encoding(0, *d))
+            .map(|d| Self::char_encoding(0, *d))
             .collect();
 
         helpers::join_iters(slices.iter())
@@ -83,7 +94,7 @@ impl EAN8 {
         let slices: Vec<[u8; 7]> = self
             .right_digits()
             .iter()
-            .map(|d| self.char_encoding(2, *d))
+            .map(|d| Self::char_encoding(2, *d))
             .collect();
 
         helpers::join_iters(slices.iter())
@@ -91,6 +102,7 @@ impl EAN8 {
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         helpers::join_slices(
             &[
@@ -114,7 +126,9 @@ impl Parse for EAN8 {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        (0..10).map(|i| char::from_digit(i, 10).unwrap()).collect()
+        (0..10)
+            .map(|i| char::from_digit(i, 10).expect("Failed to convert digit to character"))
+            .collect()
     }
 }
 
@@ -126,8 +140,10 @@ mod tests {
     use alloc::string::String;
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
@@ -142,34 +158,43 @@ mod tests {
     fn invalid_data_ean8() {
         let ean8 = EAN8::new("1234er1");
 
-        assert_eq!(ean8.err().unwrap(), Error::Character);
+        assert_eq!(
+            ean8.expect_err("Expected an Error::Character but got None"),
+            Error::Character
+        );
     }
 
     #[test]
     fn invalid_len_ean8() {
         let ean8 = EAN8::new("1111112222222333333");
 
-        assert_eq!(ean8.err().unwrap(), Error::Length);
+        assert_eq!(
+            ean8.expect_err("Expected an Error::Length but got None"),
+            Error::Length
+        );
     }
 
     #[test]
     fn invalid_checksum_ean8() {
         let ean8 = EAN8::new("88023020");
 
-        assert_eq!(ean8.err().unwrap(), Error::Checksum)
+        assert_eq!(
+            ean8.expect_err("Expected an Error::Checksum but got None"),
+            Error::Checksum
+        );
     }
 
     #[test]
     fn ean8_encode() {
-        let ean81 = EAN8::new("5512345").unwrap(); // Check digit: 7
-        let ean82 = EAN8::new("9834651").unwrap(); // Check digit: 3
+        let ean81 = EAN8::new("5512345").expect("Failed to create EAN8 barcode for '5512345'"); // Check digit: 7
+        let ean82 = EAN8::new("9834651").expect("Failed to create EAN8 barcode for '9834651'"); // Check digit: 3
 
         assert_eq!(
-            collapse_vec(ean81.encode()),
+            collapse_vec(&ean81.encode()),
             "1010110001011000100110010010011010101000010101110010011101000100101"
         );
         assert_eq!(
-            collapse_vec(ean82.encode()),
+            collapse_vec(&ean82.encode()),
             "1010001011011011101111010100011010101010000100111011001101010000101"
         );
     }

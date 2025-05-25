@@ -6,7 +6,7 @@
 //! For example:
 //!
 //! ```rust
-//! use barcoders::generators::svg::*;
+//! use scanning::generators::svg::*;
 //!
 //! // Specify your own struct fields.
 //! let svg = SVG{height: 80,
@@ -59,22 +59,25 @@ pub struct Color {
 
 impl Color {
     /// Constructor.
-    pub fn new(rgba: [u8; 4]) -> Color {
-        Color { rgba }
+    #[must_use]
+    pub const fn new(rgba: [u8; 4]) -> Self {
+        Self { rgba }
     }
 
     /// Constructor for black (#000000).
-    pub fn black() -> Color {
-        Color::new([0, 0, 0, 255])
+    #[must_use]
+    pub const fn black() -> Self {
+        Self::new([0, 0, 0, 255])
     }
 
     /// Constructor for white (#FFFFFF).
-    pub fn white() -> Color {
-        Color::new([255, 255, 255, 255])
+    #[must_use]
+    pub const fn white() -> Self {
+        Self::new([255, 255, 255, 255])
     }
 
     fn to_opacity(self) -> String {
-        format!("{:.*}", 2, (self.rgba[3] as f64 / 255.0))
+        format!("{:.*}", 2, (f64::from(self.rgba[3]) / 255.0))
     }
 }
 
@@ -101,13 +104,14 @@ pub struct SVG {
     /// The RGBA color for the foreground.
     pub background: Color,
     /// The XML namespace
-    pub xmlns: Option<String> 
+    pub xmlns: Option<String>,
 }
 
 impl SVG {
     /// Returns a new SVG with default values.
-    pub fn new(height: u32) -> SVG {
-        SVG {
+    #[must_use]
+    pub const fn new(height: u32) -> Self {
+        Self {
             height,
             xdim: 1,
             foreground: Color {
@@ -116,31 +120,35 @@ impl SVG {
             background: Color {
                 rgba: [255, 255, 255, 255],
             },
-            xmlns: None 
+            xmlns: None,
         }
     }
 
     /// Set the xml namespace (xmlns) of the SVG
+    #[must_use]
     pub fn xmlns(mut self, xmlns_uri: String) -> Self {
         self.xmlns = Some(xmlns_uri);
         self
     }
 
     /// Set the x dimensional bar width
-    pub fn xdim(mut self, xdim: u32) -> Self {
+    #[must_use]
+    pub const fn xdim(mut self, xdim: u32) -> Self {
         self.xdim = xdim;
         self
     }
 
     /// Set the foreground (bar) color
-    pub fn foreground(mut self, color: Color) -> Self {
+    #[must_use]
+    pub const fn foreground(mut self, color: Color) -> Self {
         self.foreground = color;
         self
     }
 
     /// Set the background color
-    pub fn background(mut self, color: Color) -> Self {
-        self.background= color;
+    #[must_use]
+    pub const fn background(mut self, color: Color) -> Self {
+        self.background = color;
         self
     }
 
@@ -151,8 +159,8 @@ impl SVG {
         };
 
         let opacity = match &fill.to_opacity()[..] {
-            "1.00" | "1" => "".to_string(),
-            o => format!(" fill-opacity=\"{}\" ", o),
+            "1.00" | "1" => String::new(),
+            o => format!(" fill-opacity=\"{o}\" "),
         };
 
         format!(
@@ -165,22 +173,36 @@ impl SVG {
         )
     }
 
-    /// Generates the given barcode. Returns a `Result<String, Error>` of the SVG data or an
-    /// error message.
+    /// Generates the given barcode.
+    ///
+    /// Returns a `Result<String, Error>` containing the SVG data or an error message.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the provided barcode data is invalid or cannot
+    /// be processed into a valid SVG representation.
     pub fn generate<T: AsRef<[u8]>>(&self, barcode: T) -> Result<String> {
         let barcode = barcode.as_ref();
-        let width = (barcode.len() as u32) * self.xdim;
+        let width = match u32::try_from(barcode.len()) {
+            Ok(len) => len * self.xdim,
+            Err(_) => return Err(crate::error::Error::Length),
+        };
         let rects: String = barcode
             .iter()
             .enumerate()
             .filter(|&(_, &n)| n == 1)
-            .map(|(i, &n)| self.rect(n, i as u32 * self.xdim, self.xdim))
-            .collect();
+            .map(|(i, &n)| {
+                Ok(match u32::try_from(i) {
+                    Ok(offset) => self.rect(n, offset * self.xdim, self.xdim),
+                    Err(_) => return Err(crate::error::Error::Conversion),
+                })
+            })
+            .collect::<Result<String>>()?;
 
-        let xmlns = match &self.xmlns {
-            Some(xmlns) => format!("xmlns=\"{xmlns}\" "),
-            None => "".to_string() 
-        };
+        let xmlns = self
+            .xmlns
+            .as_ref()
+            .map_or_else(String::new, |xmlns| format!("xmlns=\"{xmlns}\" "));
 
         Ok(format!(
             "<svg version=\"1.1\" {x}viewBox=\"0 0 {w} {h}\">{s}{r}</svg>",
@@ -221,7 +243,9 @@ mod tests {
     fn write_file(data: &str, file: &'static str) {
         let path = open_file(file);
         let mut writer = BufWriter::new(path);
-        writer.write(data.as_bytes()).unwrap();
+        writer
+            .write_all(data.as_bytes())
+            .expect("Failed to write data to file");
     }
 
     #[cfg(not(feature = "std"))]
@@ -229,14 +253,17 @@ mod tests {
 
     #[cfg(feature = "std")]
     fn open_file(name: &'static str) -> File {
-        File::create(&Path::new(&format!("{}/{}", TEST_DATA_BASE, name)[..])).unwrap()
+        File::create(Path::new(&format!("{TEST_DATA_BASE}/{name}")[..]))
+            .expect("Failed to create file")
     }
 
     #[test]
     fn ean_13_as_svg() {
-        let ean13 = EAN13::new("750103131130").unwrap();
+        let ean13 = EAN13::new("750103131130").expect("Failed to create EAN13 barcode");
         let svg = SVG::new(80);
-        let generated = svg.generate(&ean13.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&ean13.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "ean13.svg");
@@ -247,7 +274,7 @@ mod tests {
 
     #[test]
     fn colored_ean_13_as_svg() {
-        let ean13 = EAN13::new("750103131130").unwrap();
+        let ean13 = EAN13::new("750103131130").expect("Failed to create EAN13 barcode");
         let svg = SVG {
             height: 80,
             xdim: 1,
@@ -257,9 +284,11 @@ mod tests {
             foreground: Color {
                 rgba: [0, 0, 255, 255],
             },
-            xmlns: None
+            xmlns: None,
         };
-        let generated = svg.generate(&ean13.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&ean13.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "ean13_colored.svg");
@@ -270,7 +299,7 @@ mod tests {
 
     #[test]
     fn colored_semi_transparent_ean_13_as_svg() {
-        let ean13 = EAN13::new("750103131130").unwrap();
+        let ean13 = EAN13::new("750103131130").expect("Failed to create EAN13 barcode");
         let svg = SVG {
             height: 70,
             xdim: 1,
@@ -280,9 +309,11 @@ mod tests {
             foreground: Color {
                 rgba: [0, 0, 255, 128],
             },
-            xmlns: None
+            xmlns: None,
         };
-        let generated = svg.generate(&ean13.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&ean13.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "ean13_colored_semi_transparent.svg");
@@ -293,9 +324,11 @@ mod tests {
 
     #[test]
     fn ean_8_as_svg() {
-        let ean8 = EAN8::new("9998823").unwrap();
+        let ean8 = EAN8::new("9998823").expect("Failed to create EAN8 barcode");
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
-        let generated = svg.generate(&ean8.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&ean8.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "ean8.svg");
@@ -306,9 +339,11 @@ mod tests {
 
     #[test]
     fn code39_as_svg() {
-        let code39 = Code39::new("IGOT99PROBLEMS").unwrap();
+        let code39 = Code39::new("IGOT99PROBLEMS").expect("Failed to create Code39 barcode");
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
-        let generated = svg.generate(&code39.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&code39.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "code39.svg");
@@ -319,9 +354,11 @@ mod tests {
 
     #[test]
     fn code93_as_svg() {
-        let code93 = Code93::new("IGOT99PROBLEMS").unwrap();
+        let code93 = Code93::new("IGOT99PROBLEMS").expect("Failed to create Code93 barcode");
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
-        let generated = svg.generate(&code93.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&code93.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "code93.svg");
@@ -332,9 +369,11 @@ mod tests {
 
     #[test]
     fn codabar_as_svg() {
-        let codabar = Codabar::new("A12----34A").unwrap();
+        let codabar = Codabar::new("A12----34A").expect("Failed to create Codabar barcode");
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
-        let generated = svg.generate(&codabar.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&codabar.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "codabar.svg");
@@ -345,9 +384,12 @@ mod tests {
 
     #[test]
     fn code128_as_svg() {
-        let code128 = Code128::new("ÀHIĆ345678").unwrap();
+        let code128 =
+            Code128::new("HIĆ345678", CharacterSet::A).expect("Failed to create Code128 barcode");
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
-        let generated = svg.generate(&code128.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&code128.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "code128.svg");
@@ -358,9 +400,11 @@ mod tests {
 
     #[test]
     fn ean_2_as_svg() {
-        let ean2 = EANSUPP::new("78").unwrap();
+        let ean2 = EANSUPP::new("78").expect("Failed to create EAN2 barcode");
         let svg = SVG::new(80).xmlns("http://www.w3.org/2000/svg".to_string());
-        let generated = svg.generate(&ean2.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&ean2.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "ean2.svg");
@@ -371,15 +415,18 @@ mod tests {
 
     #[test]
     fn itf_as_svg() {
-        let itf = TF::interleaved("1234123488993344556677118").unwrap();
+        let itf =
+            TF::interleaved("1234123488993344556677118").expect("Failed to create ITF barcode");
         let svg = SVG {
             height: 80,
             xdim: 1,
             background: Color::black(),
             foreground: Color::white(),
-            xmlns: None
+            xmlns: None,
         };
-        let generated = svg.generate(&itf.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&itf.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "itf.svg");
@@ -390,15 +437,17 @@ mod tests {
 
     #[test]
     fn code11_as_svg() {
-        let code11 = Code11::new("9988-45643201").unwrap();
+        let code11 = Code11::new("9988-45643201").expect("Failed to create Code11 barcode");
         let svg = SVG {
             height: 80,
             xdim: 1,
             background: Color::black(),
             foreground: Color::white(),
-            xmlns: None
+            xmlns: None,
         };
-        let generated = svg.generate(&code11.encode()[..]).unwrap();
+        let generated = svg
+            .generate(&code11.encode()[..])
+            .expect("Failed to generate SVG");
 
         if WRITE_TO_FILE {
             write_file(&generated[..], "code11.svg");

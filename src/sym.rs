@@ -5,7 +5,7 @@
 //! For example:
 //!
 //! ```rust
-//! use barcoders::sym::ean13::*;
+//! use scanning::sym::ean13::*;
 //!
 //! let barcode = EAN13::new("750103131130").unwrap();
 //! let encoded = barcode.encode();
@@ -21,9 +21,9 @@ pub mod code93;
 pub mod ean13;
 pub mod ean8;
 pub mod ean_supp;
-pub mod upca;
 mod helpers;
 pub mod tf;
+pub mod upca;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -38,15 +38,13 @@ trait Parse {
     fn parse(data: &str) -> Result<&str, Error> {
         let valid_chars = Self::valid_chars();
         let valid_len = Self::valid_len();
-        let data_len = data.len() as u32;
+        let data_len = u32::try_from(data.len()).map_err(|_| Error::Length)?;
 
         if data_len < valid_len.start || data_len > valid_len.end {
             return Err(Error::Length);
         }
 
-        let bad_char = data
-            .chars()
-            .find(|&c| !valid_chars.iter().any(|vc| *vc == c));
+        let bad_char = data.chars().find(|&c| !valid_chars.contains(&c));
 
         match bad_char {
             Some(_) => Err(Error::Character),

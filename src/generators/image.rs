@@ -21,12 +21,12 @@
 //!
 //! See the README for more examples.
 
-use std::io::Cursor;
 use crate::error::{Error, Result};
 use image::{
     DynamicImage::{self, ImageRgba8},
     ImageBuffer, ImageFormat, Rgba,
 };
+use std::io::Cursor;
 
 macro_rules! image_variants {
     ( $( #[$attr:meta] $v:ident ),* ) => {
@@ -321,10 +321,10 @@ mod tests {
         let generated = webp.generate(&ean13.encode()[..]).unwrap();
 
         if WRITE_TO_FILE {
-           write_file(&generated[..], "ean13.webp");
-       }
+            write_file(&generated[..], "ean13.webp");
+        }
 
-       assert_eq!(generated.len(), 150);
+        assert_eq!(generated.len(), 150);
     }
 
     #[test]

@@ -96,15 +96,23 @@ pub type JAN = EAN13;
 
 impl EAN13 {
     /// Creates a new barcode.
-    /// Returns Result<EAN13, Error> indicating parse success.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<EAN13> {
-        let d = EAN13::parse(data.as_ref())?;
+    ///
+    /// # Errors
+    /// Returns an `Error::Checksum` if the checksum digit is invalid.
+    /// Returns an `Error::Character` if the input contains invalid characters.
+    /// Returns an `Error::Length` if the input length is not valid.
+    ///
+    /// # Panics
+    /// Panics if the input contains a character that cannot be converted to a digit.
+    pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
+        let d = Self::parse(data.as_ref())?;
+        #[allow(clippy::cast_possible_truncation)] // Safe: to_digit(10) returns values in 0..=9
         let digits: Vec<u8> = d
             .chars()
             .map(|c| c.to_digit(10).expect("Unknown character") as u8)
             .collect();
 
-        let ean13 = EAN13(digits[0..12].to_vec());
+        let ean13 = Self(digits[0..12].to_vec());
 
         // If checksum digit is provided, check the checksum.
         if digits.len() == 13 && ean13.checksum_digit() != digits[12] {
@@ -124,14 +132,14 @@ impl EAN13 {
     }
 
     fn number_system_encoding(&self) -> [u8; 7] {
-        self.char_encoding(0, self.number_system_digit())
+        Self::char_encoding(0, self.number_system_digit())
     }
 
     fn checksum_encoding(&self) -> [u8; 7] {
-        self.char_encoding(2, self.checksum_digit())
+        Self::char_encoding(2, self.checksum_digit())
     }
 
-    fn char_encoding(&self, side: usize, d: u8) -> [u8; 7] {
+    const fn char_encoding(side: usize, d: u8) -> [u8; 7] {
         ENCODINGS[side][d as usize]
     }
 
@@ -152,7 +160,7 @@ impl EAN13 {
             .left_digits()
             .iter()
             .zip(self.parity_mapping().iter())
-            .map(|(d, s)| self.char_encoding(*s, *d))
+            .map(|(d, s)| Self::char_encoding(*s, *d))
             .collect();
 
         helpers::join_iters(slices.iter())
@@ -162,7 +170,7 @@ impl EAN13 {
         let slices: Vec<[u8; 7]> = self
             .right_digits()
             .iter()
-            .map(|d| self.char_encoding(2, *d))
+            .map(|d| Self::char_encoding(2, *d))
             .collect();
 
         helpers::join_iters(slices.iter())
@@ -170,6 +178,7 @@ impl EAN13 {
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         helpers::join_slices(
             &[
@@ -193,7 +202,9 @@ impl Parse for EAN13 {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        (0..10).map(|i| char::from_digit(i, 10).unwrap()).collect()
+        (0..10)
+            .map(|i| char::from_digit(i, 10).expect("Failed to convert digit to character"))
+            .collect()
     }
 }
 
@@ -205,8 +216,10 @@ mod tests {
     use alloc::string::String;
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
@@ -228,38 +241,51 @@ mod tests {
     fn invalid_data_ean13() {
         let ean13 = EAN13::new("1234er123412");
 
-        assert_eq!(ean13.err().unwrap(), Error::Character)
+        assert_eq!(
+            ean13.expect_err("Expected an Error::Character but got None"),
+            Error::Character
+        );
     }
 
     #[test]
     fn invalid_len_ean13() {
         let ean13 = EAN13::new("1111112222222333333");
 
-        assert_eq!(ean13.err().unwrap(), Error::Length)
+        assert_eq!(
+            ean13.expect_err("Expected an Error::Length but got None"),
+            Error::Length
+        );
     }
 
     #[test]
     fn invalid_checksum_ean13() {
         let ean13 = EAN13::new("8801051294881");
 
-        assert_eq!(ean13.err().unwrap(), Error::Checksum)
+        assert_eq!(
+            ean13.expect_err("Expected an Error::Checksum but got None"),
+            Error::Checksum
+        );
     }
 
     #[test]
     fn ean13_encode_as_bookland() {
-        let bookland1 = Bookland::new("978345612345").unwrap(); // Check digit: 5
-        let bookland2 = Bookland::new("978118999561").unwrap(); // Check digit: 5
+        let bookland1 = Bookland::new("978345612345")
+            .expect("Failed to create Bookland barcode with valid data"); // Check digit: 5
+        let bookland2 = Bookland::new("978118999561")
+            .expect("Failed to create Bookland barcode with valid data"); // Check digit: 5
 
-        assert_eq!(collapse_vec(bookland1.encode()), "10101110110001001010000101000110111001010111101010110011011011001000010101110010011101001110101");
-        assert_eq!(collapse_vec(bookland2.encode()), "10101110110001001011001100110010001001000101101010111010011101001001110101000011001101001110101");
+        assert_eq!(collapse_vec(&bookland1.encode()), "10101110110001001010000101000110111001010111101010110011011011001000010101110010011101001110101");
+        assert_eq!(collapse_vec(&bookland2.encode()), "10101110110001001011001100110010001001000101101010111010011101001001110101000011001101001110101");
     }
 
     #[test]
     fn ean13_encode() {
-        let ean131 = EAN13::new("750103131130").unwrap(); // Check digit: 5
-        let ean132 = EAN13::new("983465123499").unwrap(); // Check digit: 5
+        let ean131 =
+            EAN13::new("750103131130").expect("Failed to create EAN13 barcode with valid data"); // Check digit: 5
+        let ean132 =
+            EAN13::new("983465123499").expect("Failed to create EAN13 barcode with valid data"); // Check digit: 5
 
-        assert_eq!(collapse_vec(ean131.encode()), "10101100010100111001100101001110111101011001101010100001011001101100110100001011100101110100101");
-        assert_eq!(collapse_vec(ean132.encode()), "10101101110100001001110101011110111001001100101010110110010000101011100111010011101001000010101");
+        assert_eq!(collapse_vec(&ean131.encode()), "10101100010100111001100101001110111101011001101010100001011001101100110100001011100101110100101");
+        assert_eq!(collapse_vec(&ean132.encode()), "10101101110100001001110101011110111001001100101010110110010000101011100111010011101001000010101");
     }
 }

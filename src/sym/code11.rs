@@ -40,21 +40,32 @@ pub type USD8 = Code11;
 
 impl Code11 {
     /// Creates a new barcode.
-    /// Returns Result<Code11, Error> indicating parse success.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<Code11> {
-        Code11::parse(data.as_ref()).map(|d| Code11(d.chars().collect()))
+    ///
+    /// # Returns
+    /// Returns `Result<Code11, Error>` indicating parse success.
+    ///
+    /// # Errors
+    /// Returns an error if the input data is invalid, such as containing
+    /// unsupported characters or having an invalid length.
+    pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
+        Self::parse(data.as_ref()).map(|d| Self(d.chars().collect()))
     }
 
-    fn char_encoding(&self, c: char) -> &[u8] {
+    fn char_encoding(c: char) -> &'static [u8] {
         match CHARS.iter().find(|&ch| ch.0 == c) {
             Some(&(_, enc)) => enc,
-            None => panic!("Unknown char: {}", c),
+            None => panic!("Unknown char: {c}"),
         }
     }
 
     /// Calculates a checksum character using a weighted modulo-11 algorithm.
-    fn checksum_char(&self, data: &[char], weight_threshold: usize) -> Option<char> {
-        let get_char_pos = |&c| CHARS.iter().position(|t| t.0 == c).unwrap();
+    fn checksum_char(data: &[char], weight_threshold: usize) -> Option<char> {
+        let get_char_pos = |&c| {
+            CHARS
+                .iter()
+                .position(|t| t.0 == c)
+                .expect("Character not found in CHARS mapping")
+        };
         let weight = |i| match i % weight_threshold {
             0 => weight_threshold,
             n => n,
@@ -74,7 +85,7 @@ impl Code11 {
 
     /// Calculates the C checksum character using a weighted modulo-11 algorithm.
     fn c_checksum_char(&self) -> Option<char> {
-        self.checksum_char(&self.0, 10)
+        Self::checksum_char(&self.0, 10)
     }
 
     /// Calculates the K checksum character using a weighted modulo-11 algorithm.
@@ -82,11 +93,11 @@ impl Code11 {
         let mut data: Vec<char> = self.0.clone();
         data.push(c_checksum);
 
-        self.checksum_char(&data, 9)
+        Self::checksum_char(&data, 9)
     }
 
-    fn push_encoding(&self, into: &mut Vec<u8>, from: &[u8]) {
-        into.extend(from.iter().cloned());
+    fn push_encoding(into: &mut Vec<u8>, from: &[u8]) {
+        into.extend(from.iter().copied());
         into.extend(&SEPARATOR);
     }
 
@@ -95,10 +106,10 @@ impl Code11 {
         let c_checksum = self.c_checksum_char().expect("Cannot compute checksum C");
 
         for &c in &self.0 {
-            self.push_encoding(&mut enc, self.char_encoding(c));
+            Self::push_encoding(&mut enc, Self::char_encoding(c));
         }
 
-        self.push_encoding(&mut enc, self.char_encoding(c_checksum));
+        Self::push_encoding(&mut enc, Self::char_encoding(c_checksum));
 
         // K-checksum is only appended on barcodes greater than 10 characters.
         if self.0.len() > 10 {
@@ -106,7 +117,7 @@ impl Code11 {
                 .k_checksum_char(c_checksum)
                 .expect("Cannot compute checksum K");
 
-            self.push_encoding(&mut enc, self.char_encoding(k_checksum));
+            Self::push_encoding(&mut enc, Self::char_encoding(k_checksum));
         }
 
         enc
@@ -114,6 +125,7 @@ impl Code11 {
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of encoded binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let guard = &GUARD[..];
 
@@ -130,7 +142,7 @@ impl Parse for Code11 {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        let (chars, _): (Vec<_>, Vec<_>) = CHARS.iter().cloned().unzip();
+        let (chars, _): (Vec<_>, Vec<_>) = CHARS.iter().copied().unzip();
         chars
     }
 }
@@ -143,8 +155,10 @@ mod tests {
     use alloc::string::String;
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
@@ -152,40 +166,47 @@ mod tests {
     fn invalid_length_code11() {
         let code11 = Code11::new("");
 
-        assert_eq!(code11.err().unwrap(), Error::Length);
+        assert_eq!(
+            code11.expect_err("Expected an Error::Length but got None"),
+            Error::Length
+        );
     }
 
     #[test]
     fn invalid_data_code11() {
         let code11 = Code11::new("NOTDIGITS");
 
-        assert_eq!(code11.err().unwrap(), Error::Character);
+        assert_eq!(
+            code11.expect_err("Expected an Error::Character but got None"),
+            Error::Character
+        );
     }
 
     #[test]
     fn code11_encode_less_than_10_chars() {
-        let code111 = Code11::new("123-45").unwrap();
-        let code112 = Code11::new("666").unwrap();
-        let code113 = Code11::new("12-9").unwrap();
+        let code111 = Code11::new("123-45").expect("Failed to create Code11 barcode for '123-45'");
+        let code112 = Code11::new("666").expect("Failed to create Code11 barcode for '666'");
+        let code113 = Code11::new("12-9").expect("Failed to create Code11 barcode for '12-9'");
 
         assert_eq!(
-            collapse_vec(code111.encode()),
+            collapse_vec(&code111.encode()),
             "1011001011010110100101101100101010110101011011011011010110110101011001"
         );
         assert_eq!(
-            collapse_vec(code112.encode()),
+            collapse_vec(&code112.encode()),
             "10110010100110101001101010011010110010101011001"
         );
         assert_eq!(
-            collapse_vec(code113.encode()),
+            collapse_vec(&code113.encode()),
             "10110010110101101001011010110101101010100110101011001"
         );
     }
 
     #[test]
     fn code11_encode_more_than_10_chars() {
-        let code111 = Code11::new("1234-5678-4321").unwrap();
+        let code111 = Code11::new("1234-5678-4321")
+            .expect("Failed to create Code11 barcode for '1234-5678-4321'");
 
-        assert_eq!(collapse_vec(code111.encode()), "101100101101011010010110110010101011011010110101101101010011010101001101101001010110101011011011001010100101101101011011011010100110101011001");
+        assert_eq!(collapse_vec(&code111.encode()), "101100101101011010010110110010101011011010110101101101010011010101001101101001010110101011011011001010100101101101011011011010100110101011001");
     }
 }

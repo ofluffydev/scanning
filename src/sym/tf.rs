@@ -41,12 +41,22 @@ impl TF {
     /// If the length of the given data is odd, a checksum value will be computed and appended to
     /// the data for encoding.
     ///
-    /// Returns Result<TF::Interleaved, Error> indicating parse success.
-    pub fn interleaved<T: AsRef<str>>(data: T) -> Result<TF> {
-        TF::parse(data.as_ref()).map(|d| {
+    /// # Errors
+    /// This function returns an error if the input data contains invalid characters that are not digits.
+    ///
+    /// # Panics
+    /// This function will panic if a character in the input data cannot be converted to a digit.
+    ///
+    /// Returns Result<`TF::Interleaved`, Error> indicating parse success.
+    pub fn interleaved<T: AsRef<str>>(data: T) -> Result<Self> {
+        Self::parse(data.as_ref()).map(|d| {
+            #[allow(clippy::cast_possible_truncation)] // Safe: to_digit(10) returns values in 0..=9
             let mut digits: Vec<u8> = d
                 .chars()
-                .map(|c| c.to_digit(10).expect("Unknown character") as u8)
+                .map(|c| {
+                    c.to_digit(10)
+                        .expect("Failed to convert character to digit") as u8
+                })
                 .collect();
             let checksum_required = digits.len() % 2 == 1;
 
@@ -55,30 +65,42 @@ impl TF {
                 digits.push(check_digit);
             }
 
-            TF::Interleaved(digits)
+            Self::Interleaved(digits)
         })
     }
 
     /// Creates a new STF barcode.
     ///
-    /// Returns Result<TF::Standard, Error> indicating parse success.
-    pub fn standard<T: AsRef<str>>(data: T) -> Result<TF> {
-        TF::parse(data.as_ref()).map(|d| {
+    /// Creates a new STF barcode.
+    ///
+    /// # Errors
+    /// This function returns an error if the input data contains invalid characters that are not digits.
+    ///
+    /// # Panics
+    /// This function will panic if a character in the input data cannot be converted to a digit.
+    ///
+    /// Returns Result<`TF::Standard`, Error> indicating parse success.
+    pub fn standard<T: AsRef<str>>(data: T) -> Result<Self> {
+        Self::parse(data.as_ref()).map(|d| {
+            #[allow(clippy::cast_possible_truncation)] // Safe: to_digit(10) returns values in 0..=9
             let digits: Vec<u8> = d
                 .chars()
-                .map(|c| c.to_digit(10).expect("Unknown character") as u8)
+                .map(|c| {
+                    c.to_digit(10)
+                        .expect("Failed to convert character to digit") as u8
+                })
                 .collect();
-            TF::Standard(digits)
+            Self::Standard(digits)
         })
     }
 
     fn raw_data(&self) -> &[u8] {
         match *self {
-            TF::Standard(ref d) | TF::Interleaved(ref d) => &d[..],
+            Self::Standard(ref d) | Self::Interleaved(ref d) => &d[..],
         }
     }
 
-    fn interleave(&self, bars: u8, spaces: u8) -> Vec<u8> {
+    pub(crate) fn interleave(bars: u8, spaces: u8) -> Vec<u8> {
         let bwidths = WIDTHS[bars as usize].chars();
         let swidths = WIDTHS[spaces as usize].chars();
         let mut encoding: Vec<u8> = vec![];
@@ -86,7 +108,7 @@ impl TF {
         for (b, s) in bwidths.zip(swidths) {
             for &(c, i) in &[(b, 1), (s, 0)] {
                 match c {
-                    'W' => encoding.extend([i; 3].iter().cloned()),
+                    'W' => encoding.extend([i; 3].iter().copied()),
                     _ => encoding.push(i),
                 }
             }
@@ -95,9 +117,8 @@ impl TF {
         encoding
     }
 
-    fn char_encoding(&self, d: u8) -> Vec<u8> {
-        let bars: Vec<Vec<u8>> = self
-            .char_widths(d)
+    fn char_encoding(d: u8) -> Vec<u8> {
+        let bars: Vec<Vec<u8>> = Self::char_widths(d)
             .chars()
             .map(|c| match c {
                 'W' => vec![1, 1, 1, 0],
@@ -108,7 +129,7 @@ impl TF {
         helpers::join_iters(bars.iter())
     }
 
-    fn char_widths(&self, d: u8) -> &'static str {
+    const fn char_widths(d: u8) -> &'static str {
         WIDTHS[d as usize]
     }
 
@@ -116,7 +137,7 @@ impl TF {
         let mut encodings = vec![];
 
         for d in self.raw_data() {
-            encodings.extend(self.char_encoding(*d).iter().cloned());
+            encodings.extend(Self::char_encoding(*d).iter().copied());
         }
 
         encodings
@@ -126,7 +147,7 @@ impl TF {
         let weaves: Vec<Vec<u8>> = self
             .raw_data()
             .chunks(2)
-            .map(|c| self.interleave(c[0], c[1]))
+            .map(|c| Self::interleave(c[0], c[1]))
             .collect();
 
         helpers::join_iters(weaves.iter())
@@ -134,12 +155,13 @@ impl TF {
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         match *self {
-            TF::Standard(_) => {
+            Self::Standard(_) => {
                 helpers::join_slices(&[&STF_START[..], &self.stf_payload()[..], &STF_STOP[..]][..])
             }
-            TF::Interleaved(_) => {
+            Self::Interleaved(_) => {
                 helpers::join_slices(&[&ITF_START[..], &self.itf_payload()[..], &ITF_STOP[..]][..])
             }
         }
@@ -155,7 +177,9 @@ impl Parse for TF {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        (0..10).map(|i| char::from_digit(i, 10).unwrap()).collect()
+        (0..10)
+            .map(|i| char::from_digit(i, 10).expect("Failed to convert digit to character"))
+            .collect()
     }
 }
 
@@ -167,52 +191,54 @@ mod tests {
     pub(crate) use alloc::string::{String, ToString};
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
     #[test]
     fn new_itf() {
-        let itf = TF::interleaved("12345679".to_string());
+        let itf = TF::interleaved("12345679");
 
         assert!(itf.is_ok());
     }
 
     #[test]
     fn new_stf() {
-        let stf = TF::standard("12345".to_string());
+        let stf = TF::standard("12345");
 
         assert!(stf.is_ok());
     }
 
     #[test]
     fn invalid_data_itf() {
-        let itf = TF::interleaved("1234er123412".to_string());
+        let itf = TF::interleaved("1234er123412");
 
-        assert_eq!(itf.err().unwrap(), Error::Character);
+        assert_eq!(itf.expect_err("Expected an error"), Error::Character);
     }
 
     #[test]
     fn invalid_data_stf() {
-        let stf = TF::standard("WORDUP".to_string());
+        let stf = TF::standard("WORDUP");
 
-        assert_eq!(stf.err().unwrap(), Error::Character);
+        assert_eq!(stf.expect_err("Expected an error"), Error::Character);
     }
 
     #[test]
     fn itf_raw_data() {
-        let itf = TF::interleaved("12345679".to_string()).unwrap();
+        let itf = TF::interleaved("12345679").expect("Failed to create interleaved barcode");
 
         assert_eq!(itf.raw_data(), &[1, 2, 3, 4, 5, 6, 7, 9]);
     }
 
     #[test]
     fn itf_encode() {
-        let itf = TF::interleaved("1234567".to_string()).unwrap(); // Check digit: 0
+        let itf = TF::interleaved("1234567").expect("Failed to create interleaved barcode"); // Check digit: 0
 
         assert_eq!(
-            collapse_vec(itf.encode()),
+            collapse_vec(&itf.encode()),
             "10101110100010101110001110111010001010001110100011100010101010100011100011101101"
                 .to_string()
         );
@@ -220,8 +246,8 @@ mod tests {
 
     #[test]
     fn stf_encode() {
-        let stf = TF::standard("1234567".to_string()).unwrap();
+        let stf = TF::standard("1234567").expect("Failed to create standard barcode");
 
-        assert_eq!(collapse_vec(stf.encode()), "110110101110101010111010111010101110111011101010101010111010111011101011101010101110111010101010101110111011010110".to_string());
+        assert_eq!(collapse_vec(&stf.encode()), "110110101110101010111010111010101110111011101010101010111010111011101011101010101110111010101010101110111011010110".to_string());
     }
 }

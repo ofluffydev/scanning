@@ -5,7 +5,7 @@ use core::fmt;
 use std::error::Error as StdError;
 
 /// The possible errors that can occur during barcode encoding and generation.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     /// An invalid character found during encoding.
     Character,
@@ -15,18 +15,21 @@ pub enum Error {
     Generate,
     /// Invalid checksum.
     Checksum,
+    /// Invalid data.
+    Conversion,
 }
 
-/// Alias-type for Result<T, barcoders::error::Error>.
+/// Alias-type for Result<T, `barcoders::error::Error`>.
 pub type Result<T> = ::core::result::Result<T, Error>;
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Character => write!(f, "Barcode data is invalid"),
-            Error::Length => write!(f, "Barcode data length is invalid"),
-            Error::Generate => write!(f, "Could not generate barcode data"),
-            Error::Checksum => write!(f, "Invalid checksum"),
+            Self::Character => write!(f, "Barcode data is invalid"),
+            Self::Length => write!(f, "Barcode data length is invalid"),
+            Self::Generate => write!(f, "Could not generate barcode data"),
+            Self::Checksum => write!(f, "Invalid checksum"),
+            Self::Conversion => write!(f, "Invalid data conversion"),
         }
     }
 }

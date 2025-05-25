@@ -42,6 +42,21 @@
 //!
 //! See the Github repository.
 
+// Be a perfectionist, no code is good enough!
+#![deny(
+    clippy::all,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::perf,
+    clippy::style,
+    clippy::pedantic,
+    clippy::cargo,
+    clippy::nursery
+)]
+// Unwraps are a bad practice and do not provide useful error messages/handling.
+#![warn(clippy::unwrap_used)]
+// This lint happens regardless and is out of our control.
+#![allow(clippy::multiple_crate_versions)]
 #![warn(
     missing_docs,
     missing_debug_implementations,

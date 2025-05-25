@@ -48,19 +48,31 @@ pub enum EANSUPP {
 
 impl EANSUPP {
     /// Creates a new barcode.
-    /// Returns Result<EANSUPP, Error> indicating parse success.
-    /// Either a EAN2 or EAN5 variant will be returned depending on
+    ///
+    /// Returns `Result<EANSUPP, Error>` indicating parse success.
+    /// Either an `EAN2` or `EAN5` variant will be returned depending on
     /// the length of `data`.
-    pub fn new<T: AsRef<str>>(data: T) -> Result<EANSUPP> {
-        EANSUPP::parse(data.as_ref()).and_then(|d| {
+    ///
+    /// # Errors
+    /// Returns `Error::Length` if the length of `data` is not 2 or 5.
+    /// Returns `Error::Character` if `data` contains invalid characters.
+    ///
+    /// # Panics
+    /// Panics if `data` contains a character that cannot be converted to a digit.
+    pub fn new<T: AsRef<str>>(data: T) -> Result<Self> {
+        Self::parse(data.as_ref()).and_then(|d| {
+            #[allow(clippy::cast_possible_truncation)] // Safe: to_digit(10) returns values in 0..=9
             let digits: Vec<u8> = d
                 .chars()
-                .map(|c| c.to_digit(10).expect("Unknown character") as u8)
+                .map(|c| {
+                    c.to_digit(10)
+                        .expect("Failed to convert character to digit") as u8
+                })
                 .collect();
 
             match digits.len() {
-                2 => Ok(EANSUPP::EAN2(digits)),
-                5 => Ok(EANSUPP::EAN5(digits)),
+                2 => Ok(Self::EAN2(digits)),
+                5 => Ok(Self::EAN5(digits)),
                 _ => Err(Error::Length),
             }
         })
@@ -68,11 +80,11 @@ impl EANSUPP {
 
     fn raw_data(&self) -> &[u8] {
         match *self {
-            EANSUPP::EAN2(ref d) | EANSUPP::EAN5(ref d) => &d[..],
+            Self::EAN2(ref d) | Self::EAN5(ref d) => &d[..],
         }
     }
 
-    fn char_encoding(&self, side: usize, d: u8) -> [u8; 7] {
+    const fn char_encoding(side: usize, d: u8) -> [u8; 7] {
         ENCODINGS[side][d as usize]
     }
 
@@ -98,11 +110,11 @@ impl EANSUPP {
 
     fn parity(&self) -> [usize; 5] {
         match *self {
-            EANSUPP::EAN2(ref d) => {
+            Self::EAN2(ref d) => {
                 let modulo = ((d[0] * 10) + d[1]) % 4;
                 EAN2_PARITY[modulo as usize]
             }
-            EANSUPP::EAN5(ref _d) => {
+            Self::EAN5(ref _d) => {
                 let check = self.checksum_digit() as usize;
                 EAN5_PARITY[check]
             }
@@ -115,7 +127,7 @@ impl EANSUPP {
             .raw_data()
             .iter()
             .zip(self.parity().iter())
-            .map(|(d, s)| self.char_encoding(*s, *d))
+            .map(|(d, s)| Self::char_encoding(*s, *d))
             .collect();
 
         for (i, d) in slices.iter().enumerate() {
@@ -124,7 +136,7 @@ impl EANSUPP {
                 p.push(1);
             }
 
-            p.extend(d.iter().cloned());
+            p.extend(d.iter().copied());
         }
 
         p
@@ -132,6 +144,7 @@ impl EANSUPP {
 
     /// Encodes the barcode.
     /// Returns a Vec<u8> of binary digits.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         helpers::join_slices(&[&LEFT_GUARD[..], &self.payload()[..]][..])
     }
@@ -145,7 +158,9 @@ impl Parse for EANSUPP {
 
     /// Returns the set of valid characters allowed in this type of barcode.
     fn valid_chars() -> Vec<char> {
-        (0..10).map(|i| char::from_digit(i, 10).unwrap()).collect()
+        (0..10)
+            .map(|i| char::from_digit(i, 10).expect("Failed to convert digit to character"))
+            .collect()
     }
 }
 
@@ -157,8 +172,10 @@ mod tests {
     use alloc::string::String;
     use core::char;
 
-    fn collapse_vec(v: Vec<u8>) -> String {
-        let chars = v.iter().map(|d| char::from_digit(*d as u32, 10).unwrap());
+    fn collapse_vec(v: &[u8]) -> String {
+        let chars = v.iter().map(|d| {
+            char::from_digit(u32::from(*d), 10).expect("Failed to convert digit to character")
+        });
         chars.collect()
     }
 
@@ -180,29 +197,36 @@ mod tests {
     fn invalid_data_ean2() {
         let ean2 = EANSUPP::new("AT");
 
-        assert_eq!(ean2.err().unwrap(), Error::Character);
+        assert_eq!(
+            ean2.expect_err("Expected Error::Character but got None"),
+            Error::Character
+        );
     }
 
     #[test]
     fn invalid_len_ean2() {
         let ean2 = EANSUPP::new("123");
 
-        assert_eq!(ean2.err().unwrap(), Error::Length);
+        assert_eq!(
+            ean2.expect_err("Expected Error::Length but got None"),
+            Error::Length
+        );
     }
 
     #[test]
     fn ean2_encode() {
-        let ean21 = EANSUPP::new("34").unwrap();
+        let ean21 = EANSUPP::new("34").expect("Failed to create EAN2 barcode from input '34'");
 
-        assert_eq!(collapse_vec(ean21.encode()), "10110100001010100011");
+        assert_eq!(collapse_vec(&ean21.encode()), "10110100001010100011");
     }
 
     #[test]
     fn ean5_encode() {
-        let ean51 = EANSUPP::new("51234").unwrap();
+        let ean51 =
+            EANSUPP::new("51234").expect("Failed to create EAN5 barcode from input '51234'");
 
         assert_eq!(
-            collapse_vec(ean51.encode()),
+            collapse_vec(&ean51.encode()),
             "10110110001010011001010011011010111101010011101"
         );
     }
